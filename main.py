@@ -1,14 +1,16 @@
 import sys
 import os
-import resources_rc  # Load resource Qt di awal agar icon & QR code terbaca sempurna
+import resources_rc  # Import resource Qt di awal agar icon & QR code terbaca sempurna
 import json
 import urllib.request
+import subprocess
+import tempfile
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLineEdit, QPushButton, QComboBox, 
-                             QLabel, QFrame, QDialog, QDialogButtonBox, QMessageBox)
+                             QLabel, QFrame, QDialog, QDialogButtonBox, QMessageBox, QProgressDialog)
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QSize, Qt, QUrl, QEvent, QPointF
+from PyQt6.QtCore import QSize, Qt, QUrl, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QDesktopServices
 
 APP_VERSION = "2.0.0"
@@ -21,7 +23,6 @@ DEVICE_PRESETS = {
     "iPad Air (Tablet)": {"width": 820, "height": 1180, "ua": "Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"}
 }
 
-# JS Injection untuk mengubah Mouse Drag menjadi Touch Swipe
 TOUCH_EMULATION_JS = """
 (function() {
     var isDragging = false;
@@ -45,6 +46,39 @@ TOUCH_EMULATION_JS = """
     });
 })();
 """
+
+class DownloadWorker(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+
+    def run(self):
+        try:
+            temp_dir = tempfile.gettempdir()
+            dest_path = os.path.join(temp_dir, "MobilePreviewer_Update.exe")
+            req = urllib.request.Request(self.url, headers={'User-Agent': 'Mozilla/5.0'})
+            
+            with urllib.request.urlopen(req) as response, open(dest_path, 'wb') as out_file:
+                total_length = response.getheader('content-length')
+                if total_length is None:
+                    out_file.write(response.read())
+                else:
+                    dl = 0
+                    total_length = int(total_length)
+                    while True:
+                        buffer = response.read(4096)
+                        if not buffer:
+                            break
+                        dl += len(buffer)
+                        out_file.write(buffer)
+                        self.progress.emit(int((dl / total_length) * 100))
+            self.finished.emit(dest_path)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
@@ -111,7 +145,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.main_layout = QVBoxLayout(central_widget)
         
-        # Address Bar
         top_bar = QHBoxLayout()
         self.url_input = QLineEdit("https://techrunner.id")
         self.url_input.returnPressed.connect(self.load_url)
@@ -121,7 +154,6 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(btn_load)
         self.main_layout.addLayout(top_bar)
         
-        # Frame Mockup HP
         self.phone_frame = QFrame()
         self.phone_frame.setStyleSheet("""
             QFrame {
@@ -149,22 +181,16 @@ class MainWindow(QMainWindow):
     def setup_menu_bar(self):
         menu_bar = self.menuBar()
         
-        # --- MENU FILE ---
         file_menu = menu_bar.addMenu("File")
-        
         reload_action = QAction("Reload Page", self)
         reload_action.triggered.connect(self.web_view.reload)
         file_menu.addAction(reload_action)
-        
         file_menu.addSeparator()
-        
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-        # --- MENU VIEW ---
         view_menu = menu_bar.addMenu("View")
-        
         device_menu = view_menu.addMenu("Select Device")
         for dev_name in DEVICE_PRESETS.keys():
             action = QAction(dev_name, self)
@@ -172,7 +198,6 @@ class MainWindow(QMainWindow):
             device_menu.addAction(action)
             
         view_menu.addSeparator()
-        
         rotate_action = QAction("Rotate Orientation", self)
         rotate_action.triggered.connect(self.toggle_rotate)
         view_menu.addAction(rotate_action)
@@ -182,15 +207,11 @@ class MainWindow(QMainWindow):
         self.touch_action.triggered.connect(self.toggle_touch_mode)
         view_menu.addAction(self.touch_action)
 
-        # --- MENU HELP ---
         help_menu = menu_bar.addMenu("Help")
-        
         update_action = QAction("Check for Updates...", self)
         update_action.triggered.connect(self.check_for_updates)
         help_menu.addAction(update_action)
-        
         help_menu.addSeparator()
-        
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
@@ -211,7 +232,6 @@ class MainWindow(QMainWindow):
     def update_simulation_mode(self):
         data = DEVICE_PRESETS[self.current_device]
         w, h = (data["height"], data["width"]) if self.is_landscape else (data["width"], data["height"])
-        
         self.phone_frame.setFixedSize(w, h)
         profile = QWebEngineProfile.defaultProfile()
         profile.setHttpUserAgent(data["ua"])
@@ -239,17 +259,52 @@ class MainWindow(QMainWindow):
                 latest_tag = data.get("tag_name", "").replace("v", "")
                 
                 if latest_tag and latest_tag > APP_VERSION:
-                    reply = QMessageBox.information(
+                    reply = QMessageBox.question(
                         self, "Update Available",
-                        f"A new version (v{latest_tag}) is available!\nDo you want to open the download page?",
+                        f"New Version v{latest_tag} is available!\nDo you want to download and install the update automatically now?",
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
                     if reply == QMessageBox.StandardButton.Yes:
-                        QDesktopServices.openUrl(QUrl(data.get("html_url", "")))
+                        download_url = None
+                        for asset in data.get("assets", []):
+                            if asset.get("name", "").endswith(".exe"):
+                                download_url = asset.get("browser_download_url")
+                                break
+                        
+                        if download_url:
+                            self.start_download_update(download_url)
+                        else:
+                            QDesktopServices.openUrl(QUrl(data.get("html_url", "")))
                 else:
-                    QMessageBox.information(self, "No Update", f"You are using the latest version (v{APP_VERSION}).")
+                    QMessageBox.information(self, "Up to Date", f"You are using the latest version (v{APP_VERSION}).")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                QMessageBox.information(self, "No Release Found", "No release published on GitHub yet.\nCreate a Release Tag on GitHub to test auto-updates.")
+            else:
+                QMessageBox.warning(self, "Check Update Failed", f"HTTP Error: {e.code}")
         except Exception as e:
             QMessageBox.warning(self, "Check Update Failed", f"Could not connect to update server.\nError: {e}")
+
+    def start_download_update(self, download_url):
+        self.progress_dialog = QProgressDialog("Downloading Update...", "Cancel", 0, 100, self)
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.show()
+
+        self.worker = DownloadWorker(download_url)
+        self.worker.progress.connect(self.progress_dialog.setValue)
+        self.worker.finished.connect(self.on_download_finished)
+        self.worker.error.connect(self.on_download_error)
+        self.worker.start()
+
+    def on_download_finished(self, exe_path):
+        self.progress_dialog.close()
+        QMessageBox.information(self, "Update Ready", "Download complete! Application will now restart to complete installation.")
+        subprocess.Popen([exe_path, "/SILENT"])
+        sys.exit(0)
+
+    def on_download_error(self, err):
+        self.progress_dialog.close()
+        QMessageBox.warning(self, "Download Failed", f"Failed to download update file.\nError: {err}")
 
     def show_about(self):
         dialog = AboutDialog(self)
