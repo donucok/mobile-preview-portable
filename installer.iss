@@ -1,4 +1,3 @@
-cat << 'EOF' > installer.iss
 [Setup]
 AppName=Mobile Web Previewer
 AppVersion=2.0.0
@@ -24,4 +23,3 @@ Name: "{autodesktop}\Mobile Web Previewer"; Filename: "{app}\MobilePreviewer.exe
 
 [Run]
 Filename: "{app}\MobilePreviewer.exe"; Description: "{cm:LaunchProgram,Mobile Web Previewer}"; Flags: nowait postinstall skipifsilent
-EOF
