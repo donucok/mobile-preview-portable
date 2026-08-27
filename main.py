@@ -1,6 +1,6 @@
 import sys
 import os
-import resources_rc  # Import resource Qt di awal agar icon & QR code terbaca sempurna
+import resources_rc
 import json
 import urllib.request
 import subprocess
@@ -8,9 +8,9 @@ import tempfile
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLineEdit, QPushButton, QComboBox, 
                              QLabel, QFrame, QDialog, QDialogButtonBox, QMessageBox, QProgressDialog)
-from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
+from PyQt6.QtWebEngineCore import QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QSize, Qt, QUrl, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QDesktopServices
 
 APP_VERSION = "2.0.0"
@@ -261,7 +261,7 @@ class MainWindow(QMainWindow):
                 if latest_tag and latest_tag > APP_VERSION:
                     reply = QMessageBox.question(
                         self, "Update Available",
-                        f"New Version v{latest_tag} is available!\nDo you want to download and install the update automatically now?",
+                        f"Pembaruan versi v{latest_tag} tersedia!\n\nApakah Anda ingin langsung mengunduh dan memperbarui aplikasi sekarang?",
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
                     if reply == QMessageBox.StandardButton.Yes:
@@ -274,19 +274,19 @@ class MainWindow(QMainWindow):
                         if download_url:
                             self.start_download_update(download_url)
                         else:
-                            QDesktopServices.openUrl(QUrl(data.get("html_url", "")))
+                            QMessageBox.warning(self, "Update Error", "File installer (.exe) tidak ditemukan pada release GitHub.")
                 else:
-                    QMessageBox.information(self, "Up to Date", f"You are using the latest version (v{APP_VERSION}).")
+                    QMessageBox.information(self, "Up to Date", f"Anda sudah menggunakan versi terbaru (v{APP_VERSION}).")
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                QMessageBox.information(self, "No Release Found", "No release published on GitHub yet.\nCreate a Release Tag on GitHub to test auto-updates.")
+                QMessageBox.information(self, "No Release Found", "Belum ada Release resmi yang dibuat di GitHub.")
             else:
                 QMessageBox.warning(self, "Check Update Failed", f"HTTP Error: {e.code}")
         except Exception as e:
-            QMessageBox.warning(self, "Check Update Failed", f"Could not connect to update server.\nError: {e}")
+            QMessageBox.warning(self, "Check Update Failed", f"Gagal terhubung ke server update.\nError: {e}")
 
     def start_download_update(self, download_url):
-        self.progress_dialog = QProgressDialog("Downloading Update...", "Cancel", 0, 100, self)
+        self.progress_dialog = QProgressDialog("Mengunduh Pembaruan...", "Batal", 0, 100, self)
         self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self.progress_dialog.show()
 
@@ -298,13 +298,14 @@ class MainWindow(QMainWindow):
 
     def on_download_finished(self, exe_path):
         self.progress_dialog.close()
-        QMessageBox.information(self, "Update Ready", "Download complete! Application will now restart to complete installation.")
-        subprocess.Popen([exe_path, "/SILENT"])
+        QMessageBox.information(self, "Memulai Update", "Unduhan selesai! Aplikasi akan ditutup untuk memperbarui secara otomatis.")
+        # Eksekusi installer baru secara silent, perintahkan untuk menutup aplikasi lama & jalankan ulang setelah selesai
+        subprocess.Popen([exe_path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
         sys.exit(0)
 
     def on_download_error(self, err):
         self.progress_dialog.close()
-        QMessageBox.warning(self, "Download Failed", f"Failed to download update file.\nError: {err}")
+        QMessageBox.warning(self, "Download Failed", f"Gagal mengunduh file update.\nError: {err}")
 
     def show_about(self):
         dialog = AboutDialog(self)
