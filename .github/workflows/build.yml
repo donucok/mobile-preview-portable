@@ -33,7 +33,7 @@ jobs:
 
     - name: Build App Directory with PyInstaller
       run: |
-        pyinstaller --noconsole --onedir --name "MobilePreviewer" --icon=app_icon.ico --add-data "resources_rc.py;." main.py
+        pyinstaller --noconsole --onedir --name "MobilePreviewer" --icon=app_icon.ico --exclude-module PySide6 --exclude-module shiboken6 --add-data "resources_rc.py;." main.py
 
     - name: Install Inno Setup
       run: |
