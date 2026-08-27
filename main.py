@@ -1,5 +1,6 @@
 import sys
 import os
+import resources_rc  # Load resource Qt di awal agar icon & QR code terbaca sempurna
 import json
 import urllib.request
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -80,7 +81,7 @@ class AboutDialog(QDialog):
         layout.addWidget(qr_label)
         
         donate_text = QLabel("Scan QR Code to Support / Donate")
-        donate_text.setStyleSheet("font-style: italic; font-size: 11px; color: #666;")
+        donate_text.setStyleSheet("font-style: italic; font-size: 11px; color: #888;")
         donate_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(donate_text)
         
@@ -120,7 +121,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(btn_load)
         self.main_layout.addLayout(top_bar)
         
-        # Frame Mockup HP (Persiapan Theme/Skin)
+        # Frame Mockup HP
         self.phone_frame = QFrame()
         self.phone_frame.setStyleSheet("""
             QFrame {
@@ -259,11 +260,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
-    try:
-        import resources_rc
-    except ImportError:
-        pass
-
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
