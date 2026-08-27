@@ -1,0 +1,18 @@
+# Python cache & temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Folder hasil compile PyInstaller (.exe)
+build/
+dist/
+*.spec
+
+# Virtual environment (jika ada)
+venv/
+env/
+.venv/
+
+# System / OS hidden files
+.DS_Store
+Thumbs.db
