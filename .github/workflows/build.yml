@@ -1,32 +1,50 @@
-name: Build executable
+name: Build Installer v2.0.0
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-installer:
     runs-on: windows-latest
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install PyQt6 PyQt6-WebEngine pyinstaller
+        pip install PyQt6 PyQt6-WebEngine pyinstaller PySide6-Essentials pillow
 
-    - name: Build Executable with PyInstaller
+    - name: Convert PNG Icon to ICO for Installer
+      shell: bash
       run: |
-        pyinstaller --noconsole --onefile --name "MobilePreviewer" main.py
+        python -c "from PIL import Image; img = Image.open('app_icon.png'); img.save('app_icon.ico', format='ICO', sizes=[(256, 256)])"
 
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v5
+    - name: Compile Qt Resources
+      shell: bash
+      run: |
+        pyside6-rcc resources.qrc -o resources_rc.py
+
+    - name: Build App Directory with PyInstaller
+      run: |
+        pyinstaller --noconsole --onedir --name "MobilePreviewer" --icon=app_icon.ico --add-data "resources_rc.py;." main.py
+
+    - name: Install Inno Setup
+      run: |
+        choco install innosetup -y
+
+    - name: Compile Installer with Inno Setup
+      run: |
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+    - name: Upload Installer Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: MobilePreviewer-Executable
-        path: dist/MobilePreviewer.exe
+        name: MobilePreviewer-Setup-v2.0.0
+        path: Output/MobilePreviewer_Setup_v2.0.0.exe
